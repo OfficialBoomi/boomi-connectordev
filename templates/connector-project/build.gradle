@@ -1,0 +1,26 @@
+plugins {
+    id 'com.boomi.connector' version '0.5.1'
+}
+
+version = "1.0.0"
+
+repositories {
+    mavenCentral()
+}
+
+java.sourceCompatibility = 1.8
+java.targetCompatibility = 1.8
+
+connector {
+    sdkVersion "2.31.0"
+    className "com.example.connector.ExampleConnector"
+}
+
+dependencies {
+    // connector-sdk-api is provided by the runtime and must not be bundled.
+    // connector-sdk-util is not, and brings boomi-util transitively.
+    api "com.boomi.connsdk:connector-sdk-util"
+}
+
+jar { archiveBaseName = "my-connector" }
+connectorArchive { archiveBaseName = "my-connector" }

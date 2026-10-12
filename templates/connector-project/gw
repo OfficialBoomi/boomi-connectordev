@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Launcher wrapper for ./gradlew.
+#
+# A Gradle build runs two JVMs and only one of them reads gradle.properties:
+#
+#   Gradle daemon    resolves dependencies, runs the build   org.gradle.jvmargs
+#   Wrapper launcher downloads the distribution zip          GRADLE_OPTS only
+#
+# So a truststore configured only in gradle.properties fixes dependency
+# resolution and leaves the distribution download failing — a second failure,
+# with a different message, from the same cause. Set both here.
+
+set -euo pipefail
+cd "$(dirname "$0")"
+
+# Uncomment and point at the JDK the build should use.
+# export JAVA_HOME=/opt/homebrew/opt/openjdk@<version>/libexec/openjdk.jdk/Contents/Home
+
+# Uncomment when TLS is intercepted. Keep in step with org.gradle.jvmargs.
+# export GRADLE_OPTS="-Djavax.net.ssl.trustStore=$PWD/truststore.jks -Djavax.net.ssl.trustStorePassword=changeit"
+
+# Uncomment when JAVA_TOOL_OPTIONS breaks the JVM's TLS — connectordev-doctor.sh
+# says whether it does. Leave it commented when the variable is what makes TLS
+# work. connectordev-init.sh uncomments it when the wrapper generates only
+# with the variable cleared.
+# unset JAVA_TOOL_OPTIONS
+
+exec ./gradlew "$@"

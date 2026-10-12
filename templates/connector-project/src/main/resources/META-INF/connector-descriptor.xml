@@ -1,0 +1,4 @@
+<GenericConnectorDescriptor>
+    <field id="baseUrl" label="Base URL" type="string"/>
+    <operation types="EXECUTE" supportsBrowse="false"/>
+</GenericConnectorDescriptor>
