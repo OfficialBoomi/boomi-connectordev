@@ -26,6 +26,7 @@ Cloud runtimes run under `com.boomi.security.ExtendedSecurityManager`:
 | Walk past the connector class loader to its parent | DENIED — `RuntimePermission "getClassLoader"` |
 | Open an outbound TCP socket on a non-HTTP port | permitted |
 | Read the runtime install directory | permitted |
+| REST-framework `getHttpClient()` executed without `getHttpContext()`, against a server that answers with a 401 challenge (the client falls back to system credentials) | DENIED — `NetPermission "requestPasswordAuthentication"`, thrown from `execute()`; locally the same code returns a plain 401 |
 
 - **A local Runtime has no SecurityManager at all** — `System.getSecurityManager()` returns `null`, not a laxer policy, and the container may run as root. Every denial above passes locally, so local testing cannot surface any of them. Execute on a cloud runtime before release.
 - **No vendor SDKs.** Third-party API SDKs (Stripe, AWS, ...) typically use reflection internally and hit the `setAccessible` denial above. Make HTTP calls directly instead.

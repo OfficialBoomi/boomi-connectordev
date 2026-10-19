@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.51
+
+- The REST framework can back typed operations (GET, QUERY, ...) with framework auth via `getHttpClient()` + `getHttpContext()`; `getClient()` is EXECUTE-only.
+
+
 ## 0.0.50
 
 - Bundled dependencies must be declared `api`; `implementation` jars are silently left out of the archive.

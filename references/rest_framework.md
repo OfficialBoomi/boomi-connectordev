@@ -6,10 +6,32 @@ The package is **`com.boomi.common.rest`** — not `com.boomi.connector.*`.
 |---|---|
 | `RestConnector` | extends `BaseConnector`. `createBrowser()` throws `UnsupportedOperationException` — always override. Default `createExecuteOperation()` returns `new RestOperation(new RestOperationConnection(context))`; it adds no other operation factory, so every other declared type needs its own override (sdk_architecture.md, Connector class). |
 | `RestOperation` | extends `BaseUpdateOperation`. **`executeUpdate` is `protected final`** — it cannot be overridden. Extension points: `getPath`, `getParameters`, `getHeaders`, `getEntity`, `isRequestBodyRequired`. |
-| `RestOperationConnection` / `RestConnection` | read configuration from connection properties. |
-| `RestClient` | thin wrapper over Apache `CloseableHttpClient`. |
+| `RestOperationConnection` / `RestConnection` | read configuration from connection properties. `getHttpClient()` returns a client with proxy, pooling, retry, and redirect settings but **no credentials**; `getHttpContext()` returns the `HttpClientContext` that carries them. |
+| `RestClient` | thin wrapper over Apache `CloseableHttpClient`. Its constructor requires a non-blank HTTP method, taken from the custom operation type — so `getClient()` works only in EXECUTE. |
 
 An operation needing direct `OperationResponse` control (per-document results) must use a plain `BaseUpdateOperation` instead — `RestOperation` cannot provide it.
+
+## Typed operations
+
+A `RestConnector` can back GET, QUERY, and the other typed operation types and keep the framework's connection-driven auth. Override the factory, pass a `RestOperationConnection` to the base-class operation, and execute with **both** client and context:
+
+```java
+@Override
+protected Operation createGetOperation(OperationContext context) {
+    return new MyGetOperation(new RestOperationConnection(context));
+}
+
+// in MyGetOperation extends BaseGetOperation, executeGet(...):
+RestOperationConnection conn = (RestOperationConnection) getConnection();
+HttpGet get = new HttpGet(conn.getUrl() + "/items/" + request.getObjectId().getObjectId());
+try (CloseableHttpResponse resp = conn.getHttpClient().execute(get, conn.getHttpContext())) {
+    // map status, build the payload
+}
+```
+
+- **The context is mandatory.** `execute(request)` without `getHttpContext()` sends no credentials even with `auth=BASIC` and a valid username/password. Locally that surfaces as a plain 401; on a cloud runtime it is an `AccessControlException` (gotchas.md, Cloud runtime restrictions).
+- **Do not call `getClient()` outside EXECUTE.** It throws `IllegalArgumentException: Http Method` — a typed operation has no custom operation type.
+- Status mapping, paging, and the request itself are the operation's job; nothing from `RestOperation` applies.
 
 ## Reserved connection field ids
 

@@ -16,7 +16,7 @@
 
 | Situation | Framework |
 |---|---|
-| REST API with JSON | REST framework (`connector-sdk-rest`) — the most common choice |
+| REST API with JSON | REST framework (`connector-sdk-rest`) — the most common choice. Out of the box it provides EXECUTE only; typed GET/QUERY/CREATE/... operations are base-class operations built on `RestOperationConnection`, which keeps framework auth (rest_framework.md, Typed operations) |
 | OpenAPI 3.0 spec available and simple | OpenAPI DSL (Gradle only) — specs over ~10k lines or with deep self-referential definitions cause platform timeouts; fall back to the REST framework |
 | SOAP | SOAP framework (`connector-sdk-ws`) |
 | Anything else (binary protocols, JDBC, complex auth) | Base classes (`BaseConnector` / `BaseOperation`) |
