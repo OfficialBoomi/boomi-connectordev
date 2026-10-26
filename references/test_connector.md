@@ -30,6 +30,12 @@ Either is thrown while the response closes and names only platform frames, so ei
 
 A missing `finishPartialResult` throws nothing: the input's result becomes `FAILURE` with `input was lost during operation execution` and zero payloads. Assert the result status, not the absence of an exception.
 
+A QUERY that adds no partials and calls `finishPartialResult` reports status `null` in ConnectorTester; on a Runtime it is SUCCESS with zero documents. Assert zero payloads and status `null`: zero payloads with `FAILURE` is the lost input above.
+
+For partial results ConnectorTester reports every payload with the last partial's status, so a trailing `FAILURE` partial still shows the earlier payloads; a Runtime fails them (sdk_architecture.md, Results). It also drops `null` payloads.
+
+A second finishing call for one input — `addEmptyResult` then `finishPartialResult` — throws a `NullPointerException` into the connector in ConnectorTester and keeps the first result's SUCCESS; on a Runtime the document fails while the shape reports success (sdk_architecture.md, Results).
+
 Browse calls need `--add-opens java.base/java.lang=ALL-UNNAMED` when the test JVM is JDK 16 or later. `browseTypes()` and `browseProfiles(...)` serialize their results through JAXB, whose optimized accessor injects into `java.lang`; JDK 11 permits that by default, and JDK 16 made denial the default. Without the flag the first call throws `ExceptionInInitializerError` from `AccessorInjector.prepare`, caused by `InaccessibleObjectException`, and every later call in the same JVM degrades to `NoClassDefFoundError: Could not initialize class com.sun.xml.bind.v2.runtime.reflect.opt.Injector` — which points at the archive's `lib/` rather than at the test JVM's module flags (gotchas.md, Missing classes).
 
 ```groovy
@@ -119,7 +125,7 @@ A basic Runtime runs browse and process execution in the **same JVM**, so one de
 
 ## Logs
 
-What the connector logs to the container logger appears in `<atom_installation_directory>/logs/YYYY_MM_DD.container.log`, written continuously — nothing is held back until an error occurs. That file is world-readable and needs no privileges.
+What the connector logs to the container logger appears in `<atom_installation_directory>/logs/YYYY_MM_DD.container.log`. Lines below WARNING can reach it minutes late, until a WARNING or SEVERE flushes them, so a missing line is not evidence that the code did not run. That file is world-readable and needs no privileges.
 
 A downloaded process log carries a different set of messages; gotchas.md, Logging has which of the three loggers reaches which destination. Host access matters here because `input.getLogger()` output reaches neither the downloaded process log nor Process Reporting's per-document view — on a cloud Runtime as well as a local one. The per-document view shows the connector's output payload and the shapes that handled it, not what the connector logged.
 

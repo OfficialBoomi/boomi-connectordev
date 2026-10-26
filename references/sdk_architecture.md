@@ -41,7 +41,7 @@ A missing override compiles, validates, uploads, activates and deploys with ever
 
 LISTEN is absent from that dispatch and reaches `createOperation`'s own default — the same message-less exception, one frame higher, from `createOperation` rather than from a named factory. Listen connectors implement `ListenConnector.createListenOperation` instead (Listen operations, below).
 
-`BaseConnector.createBrowser()` and `RestConnector.createBrowser()` both throw `UnsupportedOperationException` unconditionally — always override, and never call super. See rest_framework.md for the rest of that framework's contract.
+`BaseConnector.createBrowser()` and `RestConnector.createBrowser()` both throw `UnsupportedOperationException` unconditionally — override whenever an operation is browse-enabled (`supportsBrowse` defaults to `true`) or `<testConnection>` is declared, and never call super. See rest_framework.md for the rest of that framework's contract.
 
 Development order: descriptor → Connector class → Operations → Browser.
 
@@ -73,14 +73,18 @@ Operations that bind whole input documents to memory (`readTree(input.getData())
 | Method | Use |
 |---|---|
 | `addResult(input, status, code, msg, payload)` | One result per input |
-| `addEmptyResult(input, status, code, msg)` | No payload (GET not found, DELETE success) |
+| `addEmptyResult(input, status, code, msg)` | No document (GET not found, DELETE success). `addResult` with a `null` payload sends one empty document instead |
 | `addPartialResult(input, status, code, msg, payload)` | Multiple results per input (QUERY, a split response, pages) — MUST end with `finishPartialResult(input)`, or the input counts as lost and every partial payload is dropped |
 | `addCombinedResult(inputs, status, code, msg, payload)` | One result covering a `List<ObjectData>` of inputs (first argument required) |
+
+`ResponseUtil` (`com.boomi.connector.util`) wraps these. `addResultWithHttpStatus`, `addEmptyResultWithHttpStatus` and `addPartialResultWithHttpStatus` derive the status from an HTTP code: 2xx `SUCCESS`, 300–499 `APPLICATION_ERROR`, anything else `FAILURE`. `addExceptionFailure(response, input, e)` records `FAILURE` with the exception's message and logs it to the operation logger.
+
+A non-`SUCCESS` partial sets the status of the whole input: the `SUCCESS` partials already emitted for it fail with it and do not continue past the next shape. The exception is an `APPLICATION_ERROR` partial on an Operation with `returnApplicationErrors="true"`, which keeps them and adds the error partial as one more document (empty for a `null` payload).
 
 Rules:
 - Update-style operations must add exactly one result per input document — no silent skips.
 - `OperationStatus`: `SUCCESS`, `APPLICATION_ERROR` (business error), `FAILURE` (technical).
-- **Scope the failure before choosing how to report it.** Throw `ConnectorException` (with the HTTP status and response body) only for failures that invalidate the whole execution — authentication, unreachable host, invalid configuration. For a failure attributable to one document, call `addResult(input, APPLICATION_ERROR|FAILURE, code, msg, payload)` and continue the loop. **Do not throw.**
+- **Scope the failure before choosing how to report it.** Throw `ConnectorException` (with the HTTP status and response body) only for failures that invalidate the whole execution — authentication, unreachable host, invalid configuration. For a failure attributable to one document, record it against that document (`addResult` or the `ResponseUtil` helpers) and continue the loop. **Do not throw.**
 - Never swallow a failure *silently* — always record it against its document. That is a different instruction from "always throw".
 
 Throwing on a per-document error is worse than it looks. On a 3-document batch failing at index 1:
@@ -97,7 +101,7 @@ Violating the one-result-per-document rule produces one of two errors:
 | Mistake | Error | Raised as | Shape status |
 |---|---|---|---|
 | **No result** for a document | `Input was lost during operation execution` | no Java exception; detected after the loop completes | `Shape executed with errors` |
-| **Two results** for a document | `Input <id> was not outstanding (already marked as finished)` | `java.lang.IllegalArgumentException`, at the second call | `Shape executed successfully` |
+| **Two results** for a document | `Input <id> was not outstanding (already marked as finished)` | logged at SEVERE by the platform; the second call returns normally, so the connector's `catch` never sees it | `Shape executed successfully` |
 
 The duplicate case is the more deceptive: the connector shape reports success, and the failure surfaces only in the execution's document-error tally.
 
@@ -116,9 +120,9 @@ for (ObjectData input : request) {
             response.addPartialResult(input, OperationStatus.SUCCESS, "OK", "Success", payload);
         }
     } catch (Exception e) {
-        input.getLogger().log(Level.SEVERE, "unable to process input", e);
-        // keeps every SUCCESS document already added
-        response.addPartialResult(input, OperationStatus.APPLICATION_ERROR, "-1", "unable to process input", null);
+        response.getLogger().log(Level.SEVERE, "unable to process input", e);
+        // FAILURE fails this input's earlier partials whatever returnApplicationErrors is (Results)
+        response.addPartialResult(input, OperationStatus.FAILURE, "-1", "unable to process input", null);
     } finally {
         IOUtil.closeQuietly(inputData, splitter);   // closing the splitter closes the response stream
     }
@@ -128,25 +132,86 @@ for (ObjectData input : request) {
 
 - `JsonRootArraySplitter` — the body is an array. Anything else throws `An array was expected at the root of the document.`
 - `JsonArraySplitter(stream, "data")` — an array that is a field of the root object. The argument is a field name, not a path or pointer, and an array nested deeper is not found. A missing field throws `Field <name> with the content array was not found in the document` from the first `hasNext()`, after the whole body has been read. The five-argument constructor's `failIfArrayFieldNotFound=false` turns that into zero documents and no error.
-- A malformed, truncated, or dropped response throws from `hasNext()` inside the `try`, so the catch above records it and the documents already emitted survive.
-- **Paging:** one `addPartialResult` per page, or split each page's stream as above, then a single `finishPartialResult`. Collecting pages in a list OOMs once their total outgrows the heap. A page buffered as a `String` costs several times its size, so cap pages with the API's page-size parameter or split them.
+- A malformed, truncated, or dropped response throws from `hasNext()` inside the `try`, so the catch above records it against the input.
+- **Paging:** stream each page's elements (the loop above, or the nested-array recipe below), then fetch the next page, then a single `finishPartialResult` after the last. Collecting pages in a list OOMs once their total outgrows the heap, and a page-size cap bounds one page, not the total. A page buffered as a `String` costs several times its size.
+- **Output that needs every record** (a client-side sort, an aggregate; descriptor.md, Operations): enforce a record ceiling in code and fail past it with a message naming the ceiling.
+- **A record built in code** (a `JsonNode` or a POJO) goes out as `JsonPayloadUtil.toPayload(record)`, which streams it to the output; pass your own `ObjectMapper` as the second argument if the POJO has non-public members. `toPayload(mapper.writeValueAsString(record))` holds the whole string and its encoded bytes first.
 - **Passthrough** (one document per response): `addResult(input, SUCCESS, code, msg, PayloadUtil.toPayload(outputData))`, with `outputData` declared before the `try` and closed in `finally` (the official `DirectInputStreamSampleOperation`).
-- The splitters ship in `boomi-json-util`, not `connector-sdk-util`, and need Jackson bundled (build_and_package.md, Dependency rules).
+- The splitters and `JsonPayloadUtil` ship in `boomi-json-util`, not `connector-sdk-util`, and need Jackson bundled (build_and_package.md, Dependency rules).
 - ConnectorTester keeps every output payload in memory, so a large-response test needs a draining response (test_connector.md).
+
+An array below the root's first level — `data.orders.items`, and every GraphQL response — is out of the splitters' reach. Walk to it with a Jackson `JsonParser` and bind one element at a time. The two helpers are yours to write; they are not in the SDK or `boomi-json-util`:
+
+```java
+/**
+ * Positions p on the START_ARRAY at path (field names from the root), skipping other fields with skipChildren();
+ * false if a step is absent, null, or not an object, or the last is not an array.
+ * A non-empty errorField at the root level (only) passed on the way throws.
+ */
+static boolean advanceTo(JsonParser p, String errorField, String... path) throws IOException;
+
+/**
+ * Reads on to the end of the document from wherever p stopped, at any depth; returns the named field's value,
+ * matching only at the root level (getParsingContext().getParent().inRoot()), or null.
+ */
+static JsonNode rootFieldAfter(JsonParser p, String name) throws IOException;
+
+// per page, inside the try of the loop above: holds one element, never the page
+try (JsonParser p = MAPPER.getFactory().createParser(outputData)) {
+    if (advanceTo(p, "errors", "data", "orders", "items")) {
+        for (JsonToken t = p.nextToken(); t != JsonToken.END_ARRAY; t = p.nextToken()) {
+            if (t != JsonToken.START_OBJECT) {
+                p.skipChildren();
+                continue;
+            }
+            JsonNode element = p.readValueAsTree();
+            response.addPartialResult(input, OperationStatus.SUCCESS, "200", "OK", JsonPayloadUtil.toPayload(element));
+        }
+    }
+    failOnErrors(rootFieldAfter(p, "errors"));   // throws ConnectorException on a non-empty array
+}
+```
+
+- The error member — GraphQL's `errors` — can come before or after the data. One after the array throws only once the records are emitted, so the throw lands in the loop's catch, whose `FAILURE` partial fails them with it (Results). Pass `null` as `errorField` for an API with none.
+- `advanceTo` returning `false` with no error covers an absent path and a `null` at any step. Decide which means "no records" for the API, and treat the rest as an error.
+- Skip elements that are not objects, such as `null` items in a GraphQL list; a loop that stops at the first one drops every record after it.
+- A filter the endpoint cannot apply is evaluated on `element` before emitting (descriptor.md, Operations).
+- `JsonPayloadUtil` is `com.boomi.util.json.JsonPayloadUtil`, in `boomi-json-util` with the splitters.
 
 ## Browser
 
-Extend `BaseBrowser`; implement `getObjectTypes()` and `getObjectDefinitions(objectTypeId, roles)`. Honor the requested `ObjectDefinitionRole` values (INPUT vs OUTPUT) when building definitions.
+Extend `BaseBrowser`; implement `getObjectTypes()` and `getObjectDefinitions(objectTypeId, roles)`. Return one definition per requested role, in the order of `roles`. The platform binds `definitions[i]` to `roles[i]` by position and never checks: a reversed list imports cleanly with no profiles — or, when each definition sets both content types, with Request and Response silently swapped — and with one missing, the rest shift a slot and the last role gets no profile.
+
+For DELETE the INPUT schema is ignored; the request profile is always the platform's (gotchas.md, Where GET and DELETE ids come from).
+
+Past `AtomConfig.getMaxNumberObjectTypes()` (500) types, the browse does not fail as the Javadoc says: the wizard lists only the first 500 in returned order, with a warning. The wizard's Filter never reaches the Browser — the platform filters the returned labels itself — but a `browseOnly` operation field does reach `getObjectTypes()` (descriptor.md, Field scope).
 
 `ContentType` (`JSON`, `XML`, `BINARY`, `NONE`) is the dispatch key for which schema getter profile import reads — `JSON` → `setJsonSchema(String)`, `XML` → `setSchema(Element)` — so it must match the setter you called. Set the one matching the definition's role (`setInputType` for INPUT, `setOutputType` for OUTPUT); the other is ignored. Both **default to `xml`**, so a JSON schema with the content type left unset fails import with a message-less `java.lang.NullPointerException` and no profiles.
 
-For a JSON schema `setElementName()` is **mandatory** (the Javadoc's "Optional" holds only for the XML path) and parsed as an RFC 6901 pointer — `/definitions/TypeName`, leading slash required. Unset → `NullPointerException: input cannot be null`; bare name → `illegal pointer: expected a slash to separate tokens`. There is no fallback to a root `$ref`, and the schema's root shape is otherwise irrelevant (root `$ref` and inline root produce identical profiles). The generated profile's root element name is the pointer's last segment, not the object type id.
+For a JSON schema `setElementName()` is **mandatory** (the Javadoc's "Optional" holds only for the XML path) and parsed as an RFC 6901 pointer. Unset → `NullPointerException: input cannot be null`; bare name → `illegal pointer: expected a slash to separate tokens`. Two forms work:
+
+- `/definitions/TypeName` — the pointed-to subschema supplies the content and the pointer's last segment names the profile root; the schema root (its `title`, properties, or `$ref`) is ignored.
+- `""` (whole document) — the root must be an inline schema; the profile root takes its `title`, and with no `title` the root element's name is empty. A root that is only a `$ref` fails with `ProfileGeneratorException: … attempt to expand to child tree, would lose information`.
+
+For inline-root schemas, `JSONUtil.newJsonDefinition(role, schemaNode)` (`boomi-json-util`) sets both the `""` pointer and the content type.
 
 Profile components are named `<connector displayName> <objectType label> <operationType> <Request|Response>`, suffixed ` 2`, ` 3` … on collision — repeated imports accumulate duplicates rather than replacing.
 
 Packages differ and mismatches are compile errors: `BaseConnector`, `BaseBrowser`, `BaseUpdateOperation`, `ResponseUtil` in `com.boomi.connector.util`; `ObjectDefinition`, `ObjectDefinitionRole`, `ContentType`, `ObjectTypes` in `com.boomi.connector.api`.
 
 For CUSTOM test connection, the Browser also implements `ConnectionTester.testConnection()` — returning normally is the only pass signal, throwing `ConnectorException` the only failure signal. For an API with no readable surface to probe, see descriptor.md, Test connection.
+
+### Importable operation fields — `BrowseField`
+
+`getObjectDefinitions()` can add operation fields per object type with `definitions.getOperationFields().add(field)` (`com.boomi.connector.api.ui.BrowseField`). Their values arrive at execution in `OperationContext.getOperationProperties()`, like descriptor fields.
+
+A BrowseField whose id matches a descriptor operation field replaces it, **including the Java type delivered at runtime**: a descriptor `string` replaced by an `integer` BrowseField arrives as `Long`, and `getProperty` throws `ClassCastException`.
+
+This is how a dropdown's options can depend on user input: declare the controlling field with `scope="browseOnly"` or `"both"` (descriptor.md, Field scope), read it from `BrowseContext.getOperationProperties()`, and generate the BrowseField's allowed values from it. The options are fixed at Import; changing them takes a re-import.
+
+### ObjectDefinition cookie
+
+`definition.setCookie(String)` carries connector-internal metadata from browse to execution, read back per role with `OperationContext.getObjectDefinitionCookie(role)`. The cookie is captured at Import and stored in the Operation component: a new connector version sees the old cookie until the operation is re-imported, so keep parsing every format you have shipped.
 
 ### Publish one output shape
 
@@ -220,8 +285,10 @@ Logging `getOperationProperties().keySet()` at operation start is the cheapest v
 - **Unmanaged** (`UnmanagedListenOperation`): the operation owns its connection.
 - **Polling** (`BasePollingManager` + `BasePollingOperation`): `doPoll()` runs each interval; use `PersistedConnectorCache` (`getPersistedProperty`/`setPersistedProperty`) for watermarks that survive Atom restarts — it throws `UnsupportedOperationException` when persistence is disabled, so wrap defensively.
 - **Singleton**: implement `SingletonListenOperation` and `isSingleton()` to run on one cluster node only.
-- `stop()` MUST throw `ContainerStoppingException` (from `com.boomi.connector.api`) — otherwise the Atom hangs on shutdown waiting for the listener.
-- Submit events via `listener.submit(payload[, SubmitOptions])`; check `listener.isStopping()` first. Batch with `listener.getBatch()` / `IndexedPayloadBatch`.
+- `start()` must return within seconds; run the listening on its own thread. The Runtime starts and undeploys all listeners on one thread that waits on `start()`, so a blocking `start()` stalls every other listener. After 15 minutes the platform fails the listener without calling `stop()`, leaking whatever `start()` acquired until the JVM restarts.
+- `stop()` releases what `start()` acquired and returns normally.
+- `listener.isStopping()` is true only during container shutdown, not undeploy, so `stop()` must not branch on it.
+- Submit events via `listener.submit(payload[, SubmitOptions])`, with `SubmitOptions.withFailIfStopping(true)`: during container shutdown `submit` then throws `ContainerStoppingException`; catch it and stop submitting (the `ConfigurableSubmitListenOperation` sample). Without it, a submit during shutdown returns normally and its execution is discarded. Batch with `listener.getBatch()` / `IndexedPayloadBatch`.
 
 Javadoc for exact signatures: `https://boomisdkjavadoc.s3.amazonaws.com/javadoc/<sdk-version>/index.html`
 

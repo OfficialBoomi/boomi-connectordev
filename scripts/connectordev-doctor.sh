@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build-toolchain preflight: JDK, Gradle, and JVM TLS reachability; optionally a
-# source scan for stream-buffering calls.
+# source scan for calls that buffer a stream or payload.
 # connectordev-env-check.sh covers .env and API auth; both can pass while the
 # build toolchain is broken, because the scripts use curl's trust path and
 # Gradle uses the JVM's.
@@ -21,7 +21,7 @@ Reports on the build toolchain: JDK discovery, Gradle version, and whether the
 JVM can reach the plugin portal and the SDK repository.
 
   <project-dir>    also scan its src/main/java for calls that buffer a whole
-                   stream in memory (warnings only)
+                   stream or payload in memory (warnings only)
   --skip-network   run the JDK and Gradle checks only
 
 Exits non-zero if any check fails. Does not read .env.
@@ -313,14 +313,15 @@ if [[ -n "$project_dir" ]]; then
     warn "no $src_dir — source not scanned"
   else
     hits=$(grep -rnE --include='*.java' \
-      'EntityUtils\.toString|toByteArray\(|readAllBytes\(|ByteArrayOutputStream|readTree\(' \
+      'EntityUtils\.toString|toByteArray\(|readAllBytes\(|ByteArrayOutputStream|readTree\(|toPayload\(.*writeValueAsString\(' \
       "$src_dir" || true)
     if [[ -z "$hits" ]]; then
       pass "no buffering calls in $src_dir"
     else
-      warn "calls that buffer a whole stream in memory — fine only for a bounded payload"
+      warn "calls that hold a whole stream or payload in memory"
       printf '%s\n' "$hits" | sed 's/^/        /'
-      echo "        Stream responses instead: references/sdk_architecture.md, Large payloads."
+      echo "        Each needs a bound the connector enforces; how small the data is today is not one."
+      echo "        Stream responses; send a record built in code as an output document with JsonPayloadUtil.toPayload: references/sdk_architecture.md, Large payloads."
     fi
   fi
 fi

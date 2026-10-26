@@ -1,5 +1,50 @@
 # Changelog
 
+## 0.0.60
+
+- Document Browser operation fields, cookies and role ordering; correct the object type limit and elementName guidance.
+
+
+## 0.0.59
+
+- Send JSON records with `JsonPayloadUtil`; doctor flags string-built payloads.
+
+
+## 0.0.58
+
+- Document `ResponseUtil` helpers and whole-input partial failure.
+
+
+## 0.0.57
+
+- Correct listener start(), stop() and submit guidance; correct the container log note.
+
+
+## 0.0.56
+
+- Add connector icon upload and retrieval.
+
+
+## 0.0.55
+
+- Document that requireConnectionForBrowse alone decides whether import needs a Connection; scope the createBrowser override rule.
+
+
+## 0.0.54
+
+- Correct duplicate-result behavior; note ConnectorTester result divergences.
+
+
+## 0.0.53
+
+- Template operation sets HTTP timeouts, maps status from the HTTP code, and keeps error bodies.
+
+
+## 0.0.52
+
+- Document matching query capabilities to the endpoint; stream nested JSON arrays.
+
+
 ## 0.0.51
 
 - The REST framework can back typed operations (GET, QUERY, ...) with framework auth via `getHttpClient()` + `getHttpContext()`; `getClient()` is EXECUTE-only.

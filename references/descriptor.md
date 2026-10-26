@@ -31,7 +31,7 @@ A descriptor must declare at least one `<operation>`; every other child is optio
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
-<GenericConnectorDescriptor requireConnectionForBrowse="true">
+<GenericConnectorDescriptor>
     <section id="auth" sectionType="page" title="Auth"/>  <!-- 1. sections -->
     <field id="url" label="Base URL" type="string"/>      <!-- 2. connection fields -->
     <testConnection method="CUSTOM"/>                     <!-- 3. testConnection -->
@@ -41,7 +41,7 @@ A descriptor must declare at least one `<operation>`; every other child is optio
 
 Sections come before all connection fields — any section after the first field fails.
 
-Root attributes: `requireConnectionForBrowse` (browse needs credentials), `disableDefaultObjectTypeFilter` (hides the object-type filter field; valid and supported).
+Root attributes: `requireConnectionForBrowse` (default `false`; see Operations, Choosing browse mode), `disableDefaultObjectTypeFilter` (hides the object-type filter field that dynamic types add; valid and supported).
 
 Every structural error — bad order, unknown element, unknown attribute, an element that should be an attribute — returns the same `"Descriptor parsing failed, please check to make sure your connector descriptor is syntactically valid."`, naming no field, element or line. Do not debug that message: the lint names the element, the line, and what was expected instead. Bisecting from a minimal descriptor is the fallback for a parse failure the lint passes. Unknown attributes and elements are rejected at both tiers, so a clean result is evidence a construct is really in the schema. For a descriptor known to validate, `connector-sdk-rest-<version>.jar` carries Boomi's HTTP Client connector descriptor at its root.
 
@@ -73,13 +73,15 @@ Connection sections (tabs): `<section id="advanced" sectionType="page" title="Ad
 
 Titles over 40 characters return the generic parse error. Three rules answer on the semantic tier with a named message instead: exceeding the section limit (`"Maximum 3 sections are allowed."`), duplicate section ids (`"Duplicate section id found."`), and a `sectionId` matching no declared section (`"Invalid section id found."`). A declared section that no field references is fine.
 
-Field scope (operation-level fields only; connection fields are always available at browse time and runtime):
+Field scope (operation-level fields only; connection fields are available at runtime, and during import only with `requireConnectionForBrowse="true"` — see Operations, Choosing browse mode):
 
-| Scope | Availability |
-|---|---|
-| (none) / `operationOnly` | Runtime operation screen only — default |
-| `browseOnly` | Import wizard only |
-| `both` | Both |
+| Scope | Rendered | Reaches the Browser at Import | Stored; reaches runtime |
+|---|---|---|---|
+| (none) / `operationOnly` | Operation screen — default | No | Yes |
+| `browseOnly` | Import wizard | Yes | No |
+| `both` | Both | Yes — the wizard value, which Import writes back to the operation | Yes |
+
+An empty wizard field arrives as `""`, not absent.
 
 `overrideable="true"` (Dynamic Operation Properties) works only on operation fields with scope `operationOnly` (the default) or `both`, and only for `string`, `boolean`, `integer`, `customproperties` types.
 
@@ -97,7 +99,7 @@ Field scope (operation-level fields only; connection fields are always available
 </field>
 ```
 
-- Dropdown options are static — they cannot change based on another field's value. Use separate fields with visibility conditions instead.
+- Descriptor dropdown options are static — they cannot change based on another field's value. Use separate fields with visibility conditions, or generate the field at Import as a `BrowseField` whose options come from a wizard field (sdk_architecture.md, Importable operation fields).
 - `helpText` and `allowedValue` combine in either scope, `helpText` first. Help text renders only as an ⓘ hover icon beside the label, never inline, so put descriptions users need to see in the `allowedValue` labels.
 - Visibility: one `<visibilityCondition>` per field, one or more `<value>` children per condition (any match satisfies it), no chaining (if A controls B, B cannot control C); the referenced field must be boolean or have list/radio displayType; `oauth` and WsSecurity fields cannot be conditional. Chaining and a wrongly-typed controller both answer by name: `"A conditional visibility field cannot be referenced by another conditional visibility rule at this time. This is to prevent circular conditions. (Field ID: <id>)."` names the *referencing* field rather than the middle field you would have to change; `"The field with ID: <controller> is involved in the visibility configuration rule for the field with ID: <dependent>, it must be of type boolean or have a list or radio display type."` names both.
 - **One condition, one field.** A field may carry exactly one `<visibilityCondition>`, holding exactly one `<valueCondition>` — visibility can depend on one other field, never two, and never on two alternative conditions. Each limit has its own semantic-tier message: a second `<visibilityCondition>` returns `"Only 1 condition is supported for visibility at this time on field with ID: <id>."`; a second `<valueCondition>` returns `"Only 1 field value condition is supported for visibility at this time on field with ID: <id>."` A second `<valueCondition>` is rejected again by `version upload`. Eleven or more of *either* element fails the parse tier instead. Nothing here is silent. Use multiple `<value>` children to OR across one field's values, and accept that AND-ing two fields is unavailable.
@@ -174,7 +176,12 @@ Update-style operations (EXECUTE/CREATE/UPDATE/UPSERT) receive their input docum
 
 `supportsBrowse` is an attribute, not a child element, and **it defaults to `true`** — omitting it browse-enables the operation, which then opens the Import wizard rather than the operation form. The wizard's own fields (Connector Action, Runtime, Filter) are distinct from the operation's declared fields. Set `supportsBrowse="false"` on any operation that does not browse. Operations covering the same type must **agree** on it: declaring the type twice is fine, but a conflict fails with `"<TYPE> operation is configured with supportsBrowse=true and supportsBrowse=false"` (no trailing period, and the type is templated in — this is not QUERY-specific). The pipe-separated form expands for this check, so `"QUERY|GET"` collides with a bare `"QUERY"`.
 
-Static object types (skip `getObjectTypes()`) — `<browseConfiguration>` is a child of `<operation>`, and the `<objectTypes>` wrapper is required; omitting it fails with "Descriptor parsing failed":
+**Choosing browse mode.** Two independent settings:
+
+- **Object types** — static: `<browseConfiguration><objectTypes>` (below); `getObjectTypes()` output is not used, `getObjectDefinitions()` still runs. Dynamic: omit `<objectTypes>`; `getObjectTypes()` supplies the list, and the wizard adds an object-type filter field.
+- **Connection** — decided by `requireConnectionForBrowse` alone. Omitted or `"false"`: the Import wizard offers no Connection selector, and during import both Browser methods see empty connection properties — no `<defaultValue>` substitution. `"true"`: a Connection is required and its values reach the Browser. Set it only when a Browser method needs credentials or connection settings; static object types do not make a Connection available.
+
+Static object types (replace `getObjectTypes()`) — `<browseConfiguration>` is a child of `<operation>`, and the `<objectTypes>` wrapper is required; omitting it fails with "Descriptor parsing failed":
 
 ```xml
 <browseConfiguration>
@@ -223,6 +230,10 @@ A browsable QUERY operation needs both `<queryFilter>` and `<browseConfiguration
 `<availableForTags>` closes the operation. It wraps one or more `<value>` elements and restricts the operation to connectors carrying a matching tag.
 
 `queryFilter` grouping: `none`, `any`, `noNestingImplicitOr`, `noNestingImplicitAnd`, `singleNestingImplicitOr`, `singleNestingImplicitAnd`. Sorting: `none`, `one`, `unbounded`.
+
+**Declare only what the endpoint evaluates.** Whatever the endpoint cannot evaluate falls to the connector. A filter can still be evaluated per record as the response streams. A sort cannot: it needs every record in memory before the first is emitted. Match `operator`, `grouping` and `sorting` to what the API supports (`sorting="none"` when it has no sort), and narrow the filterable and sortable fields with `FieldSpecField` (sdk_architecture.md, Browser). Streaming: sdk_architecture.md, Large payloads.
+
+`<queryFilter>` limits only the GUI. The panel offers just the declared operators and sort orders, and `sorting="none"` removes the Sorts tab, but `sorting="one"` still allows a second sort, and an edited Operation component delivers any operator, sort order or sort count to the connector unchanged. The connector validates each against its declaration and fails the query on anything else.
 
 ### `fieldSelectionNone`
 

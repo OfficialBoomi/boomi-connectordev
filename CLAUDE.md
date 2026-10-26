@@ -6,7 +6,7 @@ Notes for developers working on this skill.
 
 - `SKILL.md` is the entry point and navigation hub — scripts inventory, terminology, workflow, and one-hop routing to every reference file.
 - `scripts/connectordev-common.sh` is the sourced library (env loading, URL builder, curl wrapper); never executed directly.
-- `scripts/connectordev-*.sh` are per-noun CLI tools: `env-check`, `group` (incl. classifications), `version` (incl. the API's descriptor validation), `version-change`. `doctor`, `init` and `descriptor-lint` call no API and read no `.env`.
+- `scripts/connectordev-*.sh` are per-noun CLI tools: `env-check`, `group` (incl. classifications), `version` (incl. the API's descriptor validation), `version-change`, `icon`. `doctor`, `init` and `descriptor-lint` call no API and read no `.env`.
 - `references/` holds the connector build/test knowledge; every file is routed from SKILL.md with a "Use when" line.
 - `templates/connector-project/` is a working Gradle project that `scripts/connectordev-init.sh` copies and renames. It is a third skill subdirectory beyond the usual `references/` and `scripts/`. The alternative was a script emitting the same files as heredocs, which cannot be built and verified in place. Keep it buildable: change it only alongside a run of init plus `./gw connectorArchive`.
 - References stay thin deliberately — stable contracts and traps live in `references/`; everything else is fetched live via SKILL.md's "Platform docs on demand" pattern. Don't bake in doc-page content that drifts.
@@ -27,4 +27,4 @@ Notes for developers working on this skill.
 
 ## API surface
 
-Scripts call the Connector Deployment API (`{BOOMI_API_URL}/connector/api/rest/v1/{accountId}`): ConnectorGroup, ConnectorClassification, ConnectorVersion, ConnectorVersionChange, ConnectorDescriptorValidation, and both query resources. The Connector Management API resources (review, visibility, metadata, icon, pending release) are not covered.
+Scripts call the Connector Deployment API (`{BOOMI_API_URL}/connector/api/rest/v1/{accountId}`): ConnectorGroup, ConnectorClassification, ConnectorVersion, ConnectorVersionChange, ConnectorDescriptorValidation, and both query resources, plus ConnectorIcon from the Connector Management API. The other Management API resources (review, visibility, metadata, pending release) are not covered.

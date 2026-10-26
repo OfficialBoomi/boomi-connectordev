@@ -4,7 +4,7 @@ The package is **`com.boomi.common.rest`** — not `com.boomi.connector.*`.
 
 | Class | Role |
 |---|---|
-| `RestConnector` | extends `BaseConnector`. `createBrowser()` throws `UnsupportedOperationException` — always override. Default `createExecuteOperation()` returns `new RestOperation(new RestOperationConnection(context))`; it adds no other operation factory, so every other declared type needs its own override (sdk_architecture.md, Connector class). |
+| `RestConnector` | extends `BaseConnector`. `createBrowser()` throws `UnsupportedOperationException` — override per sdk_architecture.md, Connector class. Default `createExecuteOperation()` returns `new RestOperation(new RestOperationConnection(context))`; it adds no other operation factory, so every other declared type needs its own override (sdk_architecture.md, Connector class). |
 | `RestOperation` | extends `BaseUpdateOperation`. **`executeUpdate` is `protected final`** — it cannot be overridden. Extension points: `getPath`, `getParameters`, `getHeaders`, `getEntity`, `isRequestBodyRequired`. |
 | `RestOperationConnection` / `RestConnection` | read configuration from connection properties. `getHttpClient()` returns a client with proxy, pooling, retry, and redirect settings but **no credentials**; `getHttpContext()` returns the `HttpClientContext` that carries them. |
 | `RestClient` | thin wrapper over Apache `CloseableHttpClient`. Its constructor requires a non-blank HTTP method, taken from the custom operation type — so `getClient()` works only in EXECUTE. |
