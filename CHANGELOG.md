@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.0.64
+
+- Add an index of Boomi's open-source sample connectors.
+
+
+## 0.0.63
+
+- Add a QUERY operation sample.
+
+
+## 0.0.62
+
+- Remove the Claude Code permission presets from the README.
+
+
+## 0.0.61
+
+- Stop shipping developer `CLAUDE.md` files.
+- Label the README permission presets as Claude Code settings.
+
+
 ## 0.0.60
 
 - Document Browser operation fields, cookies and role ordering; correct the object type limit and elementName guidance.

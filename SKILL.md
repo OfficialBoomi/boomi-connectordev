@@ -73,12 +73,13 @@ Query state before mutating: `group query` / `version query` show what exists; `
 
 ## References
 
-- references/build_and_package.md — Use when: scaffolding a project, choosing a framework, editing build files, packaging the archive, or deciding which dependencies to bundle.
+- references/build_and_package.md — Use when: scaffolding a project, choosing a framework, editing build files, packaging the archive, deciding which dependencies to bundle, or finding an open-source connector to learn a pattern from.
 - references/descriptor.md — Use when: authoring or debugging `connector-descriptor.xml` (fields, operations, visibility, test connection), choosing a browse mode (static vs dynamic types, whether import needs a Connection), or handing declarations to whoever builds the Connection and Operation components.
 - references/rest_framework.md — Use when: building on `connector-sdk-rest` (`RestConnector` / `RestOperation`) — reserved connection and operation field ids, authentication configured without Java, and typed (non-EXECUTE) operations that keep framework auth.
 - references/sdk_architecture.md — Use when: writing the Java (Connector/Browser/Operation classes, results, large or paged responses, listeners, thread safety), debugging profile import from a Browser's object definitions, or generating operation fields or cookies at Import.
 - references/test_connector.md — Use when: writing tests (including large-response tests), debugging against a local Runtime, or deciding whether a local Runtime is needed at all (a listener connector is the clearest case).
 - references/gotchas.md — Use when: reviewing connector code, a connector fails at runtime (missing classes, memory, cloud restrictions, logging), a GET or DELETE operation is never entered or its documents vanish, or tracked-property values aren't showing up in the platform UI's process Test mode.
+- templates/query-operation/ — Use when: writing a QUERY operation (filter, sort, streamed results) or its ConnectorTester test.
 
 ## Platform docs on demand
 

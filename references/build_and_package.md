@@ -121,6 +121,20 @@ javap -cp connector-sdk-api.jar:connector-sdk-util.jar com.boomi.connector.api.O
 
 `javap` is authoritative for the version in the build, offline, and reports a class the classpath lacks as `class not found` — which is how the `JsonPayloadUtil` gap above surfaces before it becomes a compile error.
 
+### Open-source sample connectors
+
+For a pattern `./gw connectorSamples` doesn't cover, clone the matching repo from `https://bitbucket.org/officialboomi/<repo>.git` into a new `connector-samples/` folder at the project root. Read it for the pattern only: don't build it or take its build files or versions. Where it disagrees with `./gw connectorSamples` or `javap` against your resolved jars, those win.
+
+| Repo | Shows |
+|---|---|
+| `jms-v2` | Listener |
+| `database-v2` | Live-schema browse; test connection; custom EXECUTE operations |
+| `salesforce-rest` | OAuth 2.0; QUERY; custom operations |
+| `snowflake` | QUERY |
+| `veeva` | OpenAPI framework with live-metadata browse |
+| `connector-rest` | REST framework |
+| `connector-openapi` | OpenAPI framework |
+
 ## Scaffolding a project
 
 `scripts/connectordev-init.sh <target-dir> [--name <artifact>] [--package <pkg>] [--class <Name>]` lays down the template under `templates/connector-project/` — build files, a pinned Gradle wrapper, a minimal Connector and EXECUTE Operation, and the `META-INF` resource layout — then renames it. It needs `gradle` on `PATH` to generate the wrapper; a project that already has `./gradlew` does not.

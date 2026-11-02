@@ -28,9 +28,3 @@ The scripts parse `.env` rather than executing it: they read the keys above, ign
 Publishing connectors additionally requires the account to have a signed SDK Publisher Agreement and the user to hold the DEVELOPER privilege. Run `connectordev-env-check.sh` to verify access.
 
 Building connectors locally requires a JDK and Gradle — the supported build path, and the one Boomi recommends. Maven guidance is best-effort. Connectors emit Java 8 bytecode regardless of the JDK used to build them; the supported JDK/Gradle pairing is in `references/build_and_package.md`. Live testing and debugging require a local Runtime (Atom) on a machine you control — shared cloud runtimes can execute a published connector but do not support archive swapping or remote debugging.
-
-Allowlist the skill and its scripts in the workspace's `.claude/settings.json` under `permissions.allow`:
-
-- `Skill(bc-connectordev:boomi-connectordev)`
-- `Bash(bash */skills/boomi-connectordev/scripts/*)`
-- `Bash(./gw:*)` — the connector project's Gradle launcher, run from the project directory
